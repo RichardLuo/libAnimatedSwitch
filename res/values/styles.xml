@@ -26,7 +26,8 @@
 <resources>
 
     <style name="Widget.Holo.CompoundButton.Switch" parent="android:Widget.CompoundButton">
-        <item name="asb_track">@drawable/switch_track_holo_dark</item>
+        <item name="asb_onTrack">@drawable/switch_track_holo_dark</item>
+        <item name="asb_offTrack">@drawable/switch_track_holo_dark</item>
         <item name="asb_thumb">@drawable/switch_inner_holo_dark</item>
         <item name="asb_switchTextAppearance">@style/TextAppearance.Holo.Widget.Switch</item>
         <item name="asb_textOn">@string/switch_on</item>
@@ -37,7 +38,8 @@
     </style>
 
     <style name="Widget.Holo.Light.CompoundButton.Switch" parent="android:Widget.CompoundButton">
-        <item name="asb_track">@drawable/switch_track_holo_light</item>
+        <item name="asb_onTrack">@drawable/switch_track_holo_light</item>
+        <item name="asb_offTrack">@drawable/switch_track_holo_light</item>
         <item name="asb_thumb">@drawable/switch_inner_holo_light</item>
         <item name="asb_switchTextAppearance">@style/TextAppearance.Holo.Light.Widget.Switch</item>
         <item name="asb_textOn">@string/switch_on</item>

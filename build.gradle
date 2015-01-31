@@ -9,6 +9,11 @@ buildscript {
 
 apply plugin: 'android-library'
 
+repositories {
+    maven { url "http://dl.bintray.com/populov/maven" }
+    mavenCentral()
+}
+
 android {
 
     compileSdkVersion 19
@@ -27,3 +32,7 @@ android {
     }
 }
 
+
+dependencies {
+    compile 'com.actionbarsherlock:actionbarsherlock:4.4.0@aar'
+}

@@ -60,7 +60,8 @@
         <!-- Drawable to use as the "thumb" that switches back and forth. -->
         <attr name="asb_thumb" format="reference" />
         <!-- Drawable to use as the "track" that the switch thumb slides within. -->
-        <attr name="asb_track" format="reference" />
+        <attr name="asb_onTrack" format="reference" />
+        <attr name="asb_offTrack" format="reference" />
         <!-- Text to use when the switch is in the checked/"on" state. -->
         <attr name="asb_textOn" format="reference" />
         <!-- Text to use when the switch is in the unchecked/"off" state. -->
@@ -73,6 +74,8 @@
         <attr name="asb_switchMinWidth" format="dimension" />
         <!-- Minimum space between the switch and caption text -->
         <attr name="asb_switchPadding" format="dimension" />
+        <attr name="asb_thumbShadowOffset" format="dimension" />
+        <attr name="asb_trackColor" format="color" />
     </declare-styleable>
     <declare-styleable name="SwitchBackportTheme">
         <attr name="asb_switchStyle" format="reference" />
