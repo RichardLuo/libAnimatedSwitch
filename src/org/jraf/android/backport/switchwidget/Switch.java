@@ -100,9 +100,9 @@ public class Switch extends CompoundButton
 
     enum ThumbState {
         TS_STOPPED,
-                TS_SQUASHING,
-                TS_SLIDING,
-                }
+        TS_SQUASHING,
+        TS_SLIDING,
+    }
 
     private ThumbState mThumbState;
 
@@ -486,15 +486,6 @@ public class Switch extends CompoundButton
         invalidate();
     }
 
-    private void startAnimation1() {
-        mAnimator1 =
-                ObjectAnimator.ofInt(mThumbDrawable, "level", THUMB_SQUASH_RATIO);
-        mAnimator1.setDuration(150);
-        mAnimator1.addListener(this);
-        mAnimator1.addUpdateListener(this);
-        mAnimator1.start();
-    }
-
     @SuppressLint("NewApi")
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
@@ -516,7 +507,7 @@ public class Switch extends CompoundButton
                     mTouchY = y;
                     if (mThumbState == ThumbState.TS_STOPPED) {
                         mThumbState = ThumbState.TS_SQUASHING;
-                        startAnimation1();
+                        startSquashAnim();
                     }
                 }
                 break;
@@ -613,14 +604,14 @@ public class Switch extends CompoundButton
 
     @Override
     public void onAnimationEnd(Animator animator) {
-        if (animator == mAnimator1) {
+        if (animator == mSquashAnim) {
             Log.d(TAG, "finished anima1, mCheckedAnim" + mCheckedAnim + " mTouchMode:" + mTouchMode);
-            if (mTouchMode != TOUCH_MODE_DOWN) {
-                startAnimation2();
+            if (mTouchMode == TOUCH_MODE_IDLE) {
+                startRestoreAnim();
             }
-        } else if (animator == mAnimator2) {
+        } else if (animator == mRestoreAnim) {
 
-        } else if (animator == mAnimator3 || animator == mAnimatorSet) {
+        } else if (animator == mMoveAnim || animator == mAnimatorSet) {
             mThumbState = ThumbState.TS_STOPPED;
             mCheckedAnim = true;
         }
@@ -642,63 +633,72 @@ public class Switch extends CompoundButton
     public void onAnimationRepeat(Animator animator) {
     }
 
-    private ValueAnimator mAnimator1;
-    private ValueAnimator mAnimator2;
-    private ValueAnimator mAnimator3;
+    private ValueAnimator mSquashAnim;
+    private ValueAnimator mRestoreAnim;
+    private ValueAnimator mMoveAnim;
     private AnimatorSet   mAnimatorSet;
 
-    private void startAnimation22() {
-        mAnimator2 = ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
-        mAnimator2.addUpdateListener(this);
+    private void startSquashAnim() {
+        mSquashAnim =
+                ObjectAnimator.ofInt(mThumbDrawable, "level", THUMB_SQUASH_RATIO);
+        mSquashAnim.setDuration(150);
+        mSquashAnim.addListener(this);
+        mSquashAnim.addUpdateListener(this);
+        mSquashAnim.start();
+    }
+
+    private void startRestoreAnim() {
+        mRestoreAnim = ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
+        mRestoreAnim.setDuration(180);
+        mRestoreAnim.addListener(this);
+        mRestoreAnim.addUpdateListener(this);
+        mRestoreAnim.start();
+    }
+
+    private void startMoveAndRestore() {
+        mRestoreAnim = ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
+        mRestoreAnim.addUpdateListener(this);
 
         final float dstPosi = !mChecked ? 0f : getThumbScrollRange();
         Log.d(TAG, "dstPosi:" + dstPosi);
-        mAnimator3 = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
-        mAnimator3.addUpdateListener(this);
+        mMoveAnim = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
+        mMoveAnim.addUpdateListener(this);
         
         mAnimatorSet = new AnimatorSet();
         mAnimatorSet.addListener(this);
         mAnimatorSet.setDuration(200);
         mAnimatorSet.setInterpolator(new BounceInterpolator(1.0f));
-        mAnimatorSet.playTogether(mAnimator2, mAnimator3);
+        mAnimatorSet.playTogether(mRestoreAnim, mMoveAnim);
         mAnimatorSet.start();
     }
 
-    private void startAnimation2() {
-        mAnimator2 = ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
-        mAnimator2.setDuration(180);
-        mAnimator2.addListener(this);
-        mAnimator2.addUpdateListener(this);
-        mAnimator2.start();
-    }
-
-    private void startAnimation3() {
+    private void startMoveAnim() {
         final float dstPosi = !mChecked ? 0f : getThumbScrollRange();
         // Log.d(TAG, "dstPosi:" + dstPosi);
-        mAnimator3 = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
-        mAnimator3.setInterpolator(new BounceInterpolator(1.0f));
-        mAnimator3.setDuration(200);
-        mAnimator3.addListener(this);
-        mAnimator3.addUpdateListener(this);
-        mAnimator3.start();
+        mMoveAnim = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
+        mMoveAnim.setInterpolator(new BounceInterpolator(1.0f));
+        mMoveAnim.setDuration(200);
+        mMoveAnim.addListener(this);
+        mMoveAnim.addUpdateListener(this);
+        mMoveAnim.start();
     }
 
 
     private void animateThumbToCheckedState(boolean newCheckedState) {
         Log.d(TAG, "--> animateThumbToCheckedState, newCheck:" + newCheckedState);
-        if (mAnimator1 == null || mThumbState == ThumbState.TS_STOPPED) {
-            // startAnimation1();
+        mChecked = newCheckedState;
+        if (mSquashAnim == null || mThumbState == ThumbState.TS_STOPPED) {
+            // startSquashAnim();
             // mCheckedAnim = false;
-            startAnimation3();
-            mChecked = newCheckedState;
-        } else if (mAnimator1.isRunning()) {
+            startMoveAnim();
+        } else if (mSquashAnim.isRunning()) {
             Log.d(TAG, "--> cancel anim1");
-            mAnimator1.cancel();
-            startAnimation2();
-            startAnimation3();
+            mSquashAnim.cancel();
+            startRestoreAnim();
+            startMoveAnim();
         } else {
-            startAnimation2();
-            startAnimation3();
+            startRestoreAnim();
+            startMoveAnim();
         }
     }
 
