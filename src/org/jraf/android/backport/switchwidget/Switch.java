@@ -29,23 +29,32 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.ShapeDrawable;
+import android.graphics.drawable.shapes.RoundRectShape;
 import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
+import android.view.View;
 import android.view.ViewConfiguration;
 import android.widget.CompoundButton;
 
+import com.actionbarsherlock.internal.nineoldandroids.animation.ObjectAnimator;
+import com.actionbarsherlock.internal.nineoldandroids.animation.ValueAnimator;
+import com.actionbarsherlock.internal.nineoldandroids.animation.Animator;
 
 /**
  * A Switch is a two-state toggle switch widget that can select between two
@@ -58,7 +67,20 @@ import android.widget.CompoundButton;
  * the related seSwitchTypeface() methods control that of the thumb.
  * 
  */
-public class Switch extends CompoundButton {
+public class Switch extends CompoundButton
+        implements ValueAnimator.AnimatorUpdateListener, Animator.AnimatorListener {
+    
+    private static final String TAG = "Switch";
+    
+    enum ThumbState {
+        TS_OFF,
+        TS_OFF_TO_ON,
+        TS_ON,
+        TS_ON_TO_OFF
+    }
+
+    private ThumbState mThumbState;
+
     private static final int TOUCH_MODE_IDLE = 0;
     private static final int TOUCH_MODE_DOWN = 1;
     private static final int TOUCH_MODE_DRAGGING = 2;
@@ -69,12 +91,19 @@ public class Switch extends CompoundButton {
     private static final int MONOSPACE = 3;
 
     private final Drawable mThumbDrawable;
-    private final Drawable mTrackDrawable;
+    private float mThumbSquashRatio = 0.3f;
+    private Bitmap mThumbBitmap;
+    private final int mThumbDrawableShadowOffset;
+    private final Drawable mOnTrackDrawable;
+    private final Drawable mOffTrackDrawable;
     private final int mThumbTextPadding;
     private final int mSwitchMinWidth;
     private final int mSwitchPadding;
     private CharSequence mTextOn;
     private CharSequence mTextOff;
+
+    private ShapeDrawable mBottomLayer;
+    private final int mBottomLayerColor;
 
     private int mTouchMode;
     private final int mTouchSlop;
@@ -86,7 +115,9 @@ public class Switch extends CompoundButton {
     private float mThumbPosition;
     private int mSwitchWidth;
     private int mSwitchHeight;
+    private int mSwitchHeightWithShadow;
     private int mThumbWidth; // Does not include padding
+    private int mThumbHeight; // Does not include padding
 
     private int mSwitchLeft;
     private int mSwitchTop;
@@ -101,6 +132,24 @@ public class Switch extends CompoundButton {
     private final Rect mTempRect = new Rect();
 
     private static final int[] CHECKED_STATE_SET = { android.R.attr.state_checked };
+    private float mRoundRadius;
+    private boolean mNoInvalidate = true;
+
+    private void init() {
+        mBottomLayer = new ShapeDrawable();
+        mBottomLayer.getPaint().setAntiAlias(true);
+        mBottomLayer.getPaint().setStyle(Paint.Style.FILL);
+        mBottomLayer.getPaint().setColor(mBottomLayerColor);
+        mThumbState = isChecked() ? ThumbState.TS_ON : ThumbState.TS_OFF;
+        // setBackground(mBottomLayer);
+    }
+
+    @Override
+    public void setBackgroundColor(int color) {
+        // super.setBackgroundColor(color);
+        Log.w(TAG, "-->setBackColor: " + color);
+        mBottomLayer.getPaint().setColor(color);
+    }
 
     /**
      * Construct a new Switch with default styling.
@@ -109,6 +158,7 @@ public class Switch extends CompoundButton {
      */
     public Switch(Context context) {
         this(context, null);
+        init();
     }
 
     /**
@@ -120,6 +170,7 @@ public class Switch extends CompoundButton {
      */
     public Switch(Context context, AttributeSet attrs) {
         this(context, attrs, R.attr.asb_switchStyle);
+        init();
     }
 
     /**
@@ -142,13 +193,16 @@ public class Switch extends CompoundButton {
 
         final TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.Switch, defStyle, 0);
 
-        mThumbDrawable = a.getDrawable(R.styleable.Switch_asb_thumb);
-        mTrackDrawable = a.getDrawable(R.styleable.Switch_asb_track);
+        mThumbDrawable = new ThumbDrawable(a.getDrawable(R.styleable.Switch_asb_thumb));
+        mThumbDrawableShadowOffset = a.getDimensionPixelSize(R.styleable.Switch_asb_thumbShadowOffset, 0);
+        mOnTrackDrawable = a.getDrawable(R.styleable.Switch_asb_onTrack);
+        mOffTrackDrawable = a.getDrawable(R.styleable.Switch_asb_offTrack);
         mTextOn = a.getText(R.styleable.Switch_asb_textOn);
         mTextOff = a.getText(R.styleable.Switch_asb_textOff);
         mThumbTextPadding = a.getDimensionPixelSize(R.styleable.Switch_asb_thumbTextPadding, 0);
         mSwitchMinWidth = a.getDimensionPixelSize(R.styleable.Switch_asb_switchMinWidth, 0);
         mSwitchPadding = a.getDimensionPixelSize(R.styleable.Switch_asb_switchPadding, 0);
+        mBottomLayerColor = a.getColor(R.styleable.Switch_asb_trackColor, 0);
 
         final int appearance = a.getResourceId(R.styleable.Switch_asb_switchTextAppearance, 0);
         if (appearance != 0) {
@@ -163,6 +217,7 @@ public class Switch extends CompoundButton {
         // Refresh display with current params
         refreshDrawableState();
         setChecked(isChecked());
+        init();
     }
 
     /**
@@ -296,8 +351,21 @@ public class Switch extends CompoundButton {
     }
 
     @Override
+    protected void onSizeChanged(int w, int h, int old_w, int old_h) {
+        super.onSizeChanged(w, h, old_w, old_h);
+        float r = h/2.0f;
+        if (mRoundRadius != r) {
+            mBottomLayer.setShape(new RoundRectShape(new float[]{r, r, r, r, r, r, r, r},
+                                                     null, null));
+        }
+    }
+
+    @Override
     @SuppressLint("NewApi")
     public void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        final int parentWidth = MeasureSpec.getSize(widthMeasureSpec);
+        final int parentHeight = MeasureSpec.getSize(heightMeasureSpec);
+
         if (mOnLayout == null) {
             mOnLayout = makeLayout(mTextOn);
         }
@@ -305,24 +373,39 @@ public class Switch extends CompoundButton {
             mOffLayout = makeLayout(mTextOff);
         }
 
-        mTrackDrawable.getPadding(mTempRect);
+        mOnTrackDrawable.getPadding(mTempRect);
         final int maxTextWidth = Math.max(mOnLayout.getWidth(), mOffLayout.getWidth());
-        final int switchWidth = Math.max(mSwitchMinWidth, maxTextWidth * 2 + mThumbTextPadding * 4 + mTempRect.left + mTempRect.right);
-        final int switchHeight = mTrackDrawable.getIntrinsicHeight();
+        // final int switchWidth = Math.max(Math.max(mSwitchMinWidth,
+        //                                           maxTextWidth * 2 + mThumbTextPadding * 4 + mTempRect.left + mTempRect.right),
+        //                                  mOnTrackDrawable.getIntrinsicWidth());
 
-        mThumbWidth = maxTextWidth + mThumbTextPadding * 2;
+        final int switchWidth = mOnTrackDrawable.getIntrinsicWidth();
+        final int switchHeight = mOnTrackDrawable.getIntrinsicHeight();
 
+        // mThumbWidth = maxTextWidth + mThumbTextPadding * 2;
+        mThumbWidth = mThumbDrawable.getIntrinsicWidth();
+        mThumbHeight = mThumbDrawable.getIntrinsicHeight();
+
+        mThumbDrawable.getPadding(mTempRect);
+        // Log.d(TAG, "W: " + parentWidth + " H:" + parentHeight + " thumb-w:" + mThumbWidth);
         mSwitchWidth = switchWidth;
         mSwitchHeight = switchHeight;
+        mSwitchHeightWithShadow = Math.max(mSwitchHeight, mThumbHeight+3*mThumbDrawableShadowOffset);
 
+        // Log.d(TAG, "switch-w: " + mSwitchWidth + " switch-h: " + mSwitchHeight);
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+
+        // Log.d(TAG, " measured-w: " + getMeasuredWidth()   +
+        //            " measured-h: " + getMeasuredHeight() +
+        //            " actual-h: " + mSwitchHeightWithShadow);
+
         final int measuredHeight = getMeasuredHeight();
-        if (measuredHeight < switchHeight) {
+        if (measuredHeight < mSwitchHeightWithShadow) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB) {
-                setMeasuredDimension(getMeasuredWidth(), switchHeight);
+                setMeasuredDimension(getMeasuredWidth(), mSwitchHeightWithShadow);
             }
             else {
-                setMeasuredDimension(getMeasuredWidthAndState(), switchHeight);
+                setMeasuredDimension(getMeasuredWidthAndState(), mSwitchHeightWithShadow);
             }
         }
     }
@@ -347,7 +430,8 @@ public class Switch extends CompoundButton {
     // }
 
     private Layout makeLayout(CharSequence text) {
-        return new StaticLayout(text, mTextPaint, (int) Math.ceil(Layout.getDesiredWidth(text, mTextPaint)), Layout.Alignment.ALIGN_NORMAL, 1.f, 0, true);
+        return new StaticLayout(text, mTextPaint,
+                                (int) Math.ceil(Layout.getDesiredWidth(text, mTextPaint)), Layout.Alignment.ALIGN_NORMAL, 1.f, 0, true);
     }
 
     /**
@@ -357,9 +441,14 @@ public class Switch extends CompoundButton {
         mThumbDrawable.getPadding(mTempRect);
         final int thumbTop = mSwitchTop - mTouchSlop;
         final int thumbLeft = mSwitchLeft + (int) (mThumbPosition + 0.5f) - mTouchSlop;
-        final int thumbRight = thumbLeft + mThumbWidth + mTempRect.left + mTempRect.right + mTouchSlop;
+        final int thumbRight = thumbLeft + mThumbDrawable.getIntrinsicWidth() + mTempRect.left + mTempRect.right + mTouchSlop;
         final int thumbBottom = mSwitchBottom + mTouchSlop;
         return x > thumbLeft && x < thumbRight && y > thumbTop && y < thumbBottom;
+    }
+
+    @Override
+    public void onAnimationUpdate(ValueAnimator animation) {
+        invalidate();
     }
 
     @SuppressLint("NewApi")
@@ -377,10 +466,18 @@ public class Switch extends CompoundButton {
             case MotionEvent.ACTION_DOWN: {
                 final float x = ev.getX();
                 final float y = ev.getY();
-                if (isEnabled() && hitThumb(x, y)) {
+                if (isEnabled()) {
                     mTouchMode = TOUCH_MODE_DOWN;
                     mTouchX = x;
                     mTouchY = y;
+                    if (mThumbDrawable.getLevel() == 0) {
+                        ValueAnimator anim =
+                                ObjectAnimator.ofInt(mThumbDrawable, "level", 2000);
+                        anim.setDuration(200);
+                        anim.addUpdateListener(this);
+                        anim.start();
+                    }
+                    // Log.d(TAG, "--> TOUCH_MODE_DOWN");
                 }
                 break;
             }
@@ -420,6 +517,7 @@ public class Switch extends CompoundButton {
             }
 
             case MotionEvent.ACTION_UP:
+                Log.d(TAG, "-->ACTION_UP");
             case MotionEvent.ACTION_CANCEL: {
                 if (mTouchMode == TOUCH_MODE_DRAGGING) {
                     stopDrag(ev);
@@ -468,11 +566,41 @@ public class Switch extends CompoundButton {
         }
     }
 
+    @Override
+    public void onAnimationStart(Animator animator) {
+    }
+
+    @Override
+    public void onAnimationEnd(Animator animator) {
+        if (mThumbState == ThumbState.TS_OFF_TO_ON ||
+            mThumbState == ThumbState.TS_ON_TO_OFF) {
+            setChecked(mThumbState == ThumbState.TS_OFF_TO_ON);
+        }
+    }
+
+    @Override
+    public void onAnimationCancel(Animator animator) {
+    }
+
+    @Override
+    public void onAnimationRepeat(Animator animator) {
+    }
+
     private void animateThumbToCheckedState(boolean newCheckedState) {
         // TODO animate!
         //float targetPos = newCheckedState ? 0 : getThumbScrollRange();
         //mThumbPosition = targetPos;
-        setChecked(newCheckedState);
+        Log.d(TAG, "--> animateThumbToCheckedState, newCheck:" + newCheckedState);
+
+        if (mThumbDrawable.getLevel() == 2000) {
+            mThumbState = newCheckedState ? ThumbState.TS_OFF_TO_ON : ThumbState.TS_ON_TO_OFF;
+            ValueAnimator anim =
+                    ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
+            anim.setDuration(200);
+            anim.addListener(this);
+            anim.addUpdateListener(this);
+            anim.start();
+        }
     }
 
     private boolean getTargetCheckedState() {
@@ -481,8 +609,18 @@ public class Switch extends CompoundButton {
 
     @Override
     public void setChecked(boolean checked) {
+        Log.d(TAG, "-->setChecked: " + checked);
         super.setChecked(checked);
         mThumbPosition = checked ? getThumbScrollRange() : 0;
+
+        // if (mThumbDrawable.getLevel() > 0) {
+        //     ValueAnimator anim =
+        //             ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
+        //     anim.setDuration(200);
+        //     anim.addUpdateListener(this);
+        //     anim.start();
+        // }
+
         invalidate();
     }
 
@@ -490,34 +628,134 @@ public class Switch extends CompoundButton {
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
 
+        Log.d(TAG, "left: " + left + " top: " + top + " right: " + right + " bottom: " + bottom);
+
         mThumbPosition = isChecked() ? getThumbScrollRange() : 0;
 
-        final int switchRight = getWidth() - getPaddingRight();
-        final int switchLeft = switchRight - mSwitchWidth;
+        int switchRight = getWidth() - getPaddingRight();
+        int switchLeft = switchRight - mSwitchWidth;
         int switchTop = 0;
         int switchBottom = 0;
-        switch (getGravity() & Gravity.VERTICAL_GRAVITY_MASK) {
-            default:
-            case Gravity.TOP:
-                switchTop = getPaddingTop();
-                switchBottom = switchTop + mSwitchHeight;
-                break;
 
-            case Gravity.CENTER_VERTICAL:
-                switchTop = (getPaddingTop() + getHeight() - getPaddingBottom()) / 2 - mSwitchHeight / 2;
-                switchBottom = switchTop + mSwitchHeight;
-                break;
-
-            case Gravity.BOTTOM:
-                switchBottom = getHeight() - getPaddingBottom();
-                switchTop = switchBottom - mSwitchHeight;
-                break;
+        if (getGravity() == Gravity.CENTER) {
+            // Log.d(TAG, "CENTER");
+            switchTop = (getPaddingTop() + getHeight() - getPaddingBottom()) / 2 - mSwitchHeight / 2;
+            switchBottom = switchTop + mSwitchHeight;
+            switchLeft = (getPaddingLeft() + getWidth() - getPaddingRight()) / 2 - mSwitchWidth/ 2;
+            switchRight = switchLeft + mSwitchWidth;
+            Log.d(TAG, "swLeft: " + switchLeft + " swRight: " + switchRight + " mSwitchWidth:" + mSwitchWidth);
+        } else {
+            switch (getGravity() & Gravity.VERTICAL_GRAVITY_MASK) {
+                default:
+                case Gravity.TOP:
+                    // Log.d(TAG, "TOP");
+                    switchTop = getPaddingTop();
+                    switchBottom = switchTop + mSwitchHeight;
+                    break;
+                case Gravity.CENTER_VERTICAL:
+                    // Log.d(TAG, "CENTER_VERTICAL");
+                    switchTop = (getPaddingTop() + getHeight() - getPaddingBottom()) / 2 - mSwitchHeight / 2;
+                    switchBottom = switchTop + mSwitchHeight;
+                    break;
+                case Gravity.BOTTOM:
+                    // Log.d(TAG, "BOTTOM");
+                    switchBottom = getHeight() - getPaddingBottom();
+                    switchTop = switchBottom - mSwitchHeight;
+                    break;
+            }
         }
 
         mSwitchLeft = switchLeft;
         mSwitchTop = switchTop;
         mSwitchBottom = switchBottom;
         mSwitchRight = switchRight;
+
+        initThumbBitmap();
+    }
+
+    private static final int WIDTH = 1000;
+    private static final int HEIGHT = 1;
+    private static final int COUNT = (WIDTH + 1) * (HEIGHT + 1);
+
+    private final float[] mVerts = new float[COUNT * 2];
+    private final float[] mOrigs = new float[COUNT * 2];
+    
+    static void setXY(float[] array, int index, float x, float y) {
+        array[index * 2 + 0] = x;
+        array[index * 2 + 1] = y;
+    }
+
+    static float getX(float[] array, int index) {
+        return array[index * 2 + 0];
+    }
+
+    static float getY(float[] array, int index) {
+        return array[index * 2 + 1];
+    }
+
+    void initMatrix(float bitmap_w, float bitmap_h) {
+        int index = 0;
+        for (int y = 0; y <= HEIGHT; y++) {
+            float fy = bitmap_h * y / HEIGHT;
+            float fx = 0.0f;
+            for (int x = 0; x <= WIDTH; x++) {
+                fx += bitmap_w / WIDTH;
+                setXY(mOrigs, index, fx, fy);
+                setXY(mVerts, index, fx, fy);
+                index += 1;
+            }
+        }
+    }
+
+    private void squashMatrix(float dia) {
+        int index = 0;
+        float w = dia + dia * mThumbSquashRatio;
+        for (int y = 0; y <= HEIGHT; y++) {
+            float fx = 0.0f;
+            float fy = dia * y / HEIGHT;
+            for (int x = 0; x <= WIDTH; x++) {
+                fx += dia / WIDTH;
+                if (x == WIDTH/2) {
+                    fx += (w - dia);
+                }
+                setXY(mVerts, index, fx, fy);
+                index += 1;
+            }
+        }
+    }
+
+    private void initThumbBitmap() {
+        final int dia = mThumbWidth;
+        // mThumbBitmap = Bitmap.createScaledBitmap(((BitmapDrawable) mThumbDrawable).getBitmap(), dia, dia, false);
+        // initMatrix(mThumbBitmap.getWidth(), mThumbBitmap.getHeight());
+        // initMatrix(mThumbDrawable.getIntrinsicWidth(), mThumbDrawable.getIntrinsicHeight());
+    }
+
+    private void drawTracks(int alpha, Canvas canvas) {
+        final int switchLeft = mSwitchLeft;
+        final int switchTop = mSwitchTop;
+        final int switchRight = mSwitchRight;
+        final int switchBottom = mSwitchBottom;
+
+        mOnTrackDrawable.setBounds(switchLeft, switchTop, switchRight, switchBottom);
+        mOffTrackDrawable.setBounds(switchLeft, switchTop, switchRight, switchBottom);
+        mOnTrackDrawable.setAlpha(alpha);
+        mOffTrackDrawable.setAlpha(255-alpha);
+
+        if (alpha > 127) {
+            mOffTrackDrawable.draw(canvas);
+            mOnTrackDrawable.draw(canvas);
+        } else {
+            mOnTrackDrawable.draw(canvas);
+            mOffTrackDrawable.draw(canvas);
+        }
+    }
+
+    @Override
+    public void postInvalidate() {
+        if (!mNoInvalidate) {
+            super.postInvalidate();
+        }
     }
 
     @Override
@@ -530,25 +768,60 @@ public class Switch extends CompoundButton {
         final int switchRight = mSwitchRight;
         final int switchBottom = mSwitchBottom;
 
-        mTrackDrawable.setBounds(switchLeft, switchTop, switchRight, switchBottom);
-        mTrackDrawable.draw(canvas);
+        // mBottomLayer.setBounds(switchLeft, switchTop, switchRight, switchBottom);
+        // mBottomLayer.draw(canvas);
+
+        mBottomLayer.setBounds(0, 0, getWidth(), getHeight());
+        mBottomLayer.draw(canvas);
+
+        // mBottomLayer.setBounds(switchLeft, switchTop, switchRight, switchBottom);
 
         canvas.save();
 
-        mTrackDrawable.getPadding(mTempRect);
+        mOnTrackDrawable.getPadding(mTempRect);
         final int switchInnerLeft = switchLeft + mTempRect.left;
         final int switchInnerTop = switchTop + mTempRect.top;
         final int switchInnerRight = switchRight - mTempRect.right;
         final int switchInnerBottom = switchBottom - mTempRect.bottom;
-        canvas.clipRect(switchInnerLeft, switchTop, switchInnerRight, switchBottom);
+        // canvas.clipRect(switchInnerLeft, switchTop, switchInnerRight, switchBottom + mThumbDrawableShadowOffset);
+        canvas.clipRect(switchInnerLeft, switchTop, switchInnerRight, switchTop+mSwitchHeightWithShadow);
 
         mThumbDrawable.getPadding(mTempRect);
+        // Log.d(TAG, "mThumbDrawable.getPadding: " + mTempRect);
         final int thumbPos = (int) (mThumbPosition + 0.5f);
         final int thumbLeft = switchInnerLeft - mTempRect.left + thumbPos;
-        final int thumbRight = switchInnerLeft + thumbPos + mThumbWidth + mTempRect.right;
+        final int thumbTop = switchTop + mThumbDrawableShadowOffset;
+        final int thumbRight = switchInnerLeft + thumbPos + mThumbDrawable.getIntrinsicWidth() + mTempRect.right;
+        final int thumbBottom = switchBottom + mThumbDrawableShadowOffset;
 
-        mThumbDrawable.setBounds(thumbLeft, switchTop, thumbRight, switchBottom);
+        final int thumbWidth = (thumbRight - thumbLeft);
+        final int thumbDistance = (switchInnerRight - switchInnerLeft - thumbWidth);
+        final int alpha = 255 * thumbPos / thumbDistance;
+
+        // Log.d(TAG, "thumbPos: " + thumbPos + " switchInnerLeft: " +
+        //       switchInnerLeft + " switchInnerRight: " + switchInnerRight);
+        // Log.d(TAG, "thumbDistance: " + thumbDistance + " thumbWidth: " + thumbWidth);
+
+        drawTracks(alpha, canvas);
+        // mThumbDrawable.setBounds(thumbLeft, thumbTop, thumbRight, thumbBottom);
+        // mThumbDrawable.draw(canvas);
+
+        // // squashMatrix(mThumbWidth);
+        // Paint paint = new Paint();
+        // paint.setAntiAlias(true);
+        // paint.setFilterBitmap(true);
+        // paint.setDither(true);
+
+        canvas.translate(thumbLeft, thumbTop);
+        // mThumbDrawable.setLevel(alpha * 5000/255);
         mThumbDrawable.draw(canvas);
+
+        // canvas.drawBitmapMesh(mThumbBitmap, WIDTH, HEIGHT, mVerts, 0, null, 0, paint);
+
+        // Paint paint = new Paint();
+        // paint.setStyle(Paint.Style.FILL);
+        // paint.setColor(R.color.dim_foreground_holo_dark);
+        // canvas.drawRect(thumbLeft, switchTop, thumbRight, switchBottom, paint);
 
         // mTextColors should not be null, but just in case
         if (mTextColors != null) {
@@ -575,11 +848,11 @@ public class Switch extends CompoundButton {
     }
 
     private int getThumbScrollRange() {
-        if (mTrackDrawable == null) {
+        if (mOnTrackDrawable == null) {
             return 0;
         }
-        mTrackDrawable.getPadding(mTempRect);
-        return mSwitchWidth - mThumbWidth - mTempRect.left - mTempRect.right;
+        mOnTrackDrawable.getPadding(mTempRect);
+        return mSwitchWidth - mThumbDrawable.getIntrinsicWidth() - mTempRect.left - mTempRect.right;
     }
 
     @Override
@@ -600,14 +873,14 @@ public class Switch extends CompoundButton {
         // Set the state of the Drawable
         // Drawable may be null when checked state is set from XML, from super constructor
         if (mThumbDrawable != null) mThumbDrawable.setState(myDrawableState);
-        if (mTrackDrawable != null) mTrackDrawable.setState(myDrawableState);
+        if (mOnTrackDrawable != null) mOnTrackDrawable.setState(myDrawableState);
 
         invalidate();
     }
 
     @Override
     protected boolean verifyDrawable(Drawable who) {
-        return super.verifyDrawable(who) || who == mThumbDrawable || who == mTrackDrawable;
+        return super.verifyDrawable(who) || who == mThumbDrawable || who == mOnTrackDrawable;
     }
 
     // XXX Was on the Android source, but had to comment it out (doesn't exist in 2.1). -- BoD
@@ -615,6 +888,6 @@ public class Switch extends CompoundButton {
     // public void jumpDrawablesToCurrentState() {
     //     super.jumpDrawablesToCurrentState();
     //     mThumbDrawable.jumpToCurrentState();
-    //     mTrackDrawable.jumpToCurrentState();
+    //     mOnTrackDrawable.jumpToCurrentState();
     // }
 }
