@@ -136,7 +136,6 @@ public class ThumbDrawable extends Drawable {
     @Override
     public void draw(Canvas canvas) {
         final int distance = getIntrinsicWidth() - getActualWidth();
-        Log.d(TAG, "posi: " + mPosition);
         final int x = distance * mPosition / 10000;
         canvas.save();
         canvas.translate(x, 0);
