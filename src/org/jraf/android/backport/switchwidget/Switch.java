@@ -482,6 +482,7 @@ public class Switch extends CompoundButton
                         mAnimator1 =
                                 ObjectAnimator.ofInt(mThumbDrawable, "level", 2000);
                         mAnimator1.setDuration(200);
+                        mAnimator1.addListener(this);
                         mAnimator1.addUpdateListener(this);
                         mAnimator1.start();
                     }
@@ -540,6 +541,7 @@ public class Switch extends CompoundButton
     }
 
     private void cancelSuperTouch(MotionEvent ev) {
+        Log.d(TAG, "--> cancelSuperTouch");
         final MotionEvent cancel = MotionEvent.obtain(ev);
         cancel.setAction(MotionEvent.ACTION_CANCEL);
         super.onTouchEvent(cancel);
@@ -580,6 +582,7 @@ public class Switch extends CompoundButton
     @Override
     public void onAnimationEnd(Animator animator) {
         if (animator == mAnimator1) {
+            Log.d(TAG, "finished anima1, mCheckedAnim" + mCheckedAnim);
             if (!mCheckedAnim) {
                 startAnimation2();
             }
@@ -616,8 +619,9 @@ public class Switch extends CompoundButton
         mAnimator2.addListener(this);
         mAnimator2.addUpdateListener(this);
         final float dstPosi = !mChecked ? 0f : getThumbScrollRange();
+        Log.d(TAG, "dstPosi:" + dstPosi);
         mAnimator3 = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
-        mAnimator3.setDuration(500);
+        mAnimator3.setDuration(200);
         mAnimator3.addListener(this);
         mAnimator3.addUpdateListener(this);
         mAnimator2.start();
@@ -629,10 +633,12 @@ public class Switch extends CompoundButton
         //float targetPos = newCheckedState ? 0 : getThumbScrollRange();
         //mThumbPosition = targetPos;
         Log.d(TAG, "--> animateThumbToCheckedState, newCheck:" + newCheckedState);
-        if (mAnimator1.isRunning()) {
+        if (mAnimator1 != null && mAnimator1.isRunning()) {
+            Log.d(TAG, "--> wait anim1");
             mCheckedAnim = false;
             mChecked = newCheckedState;
         } else {
+            Log.d(TAG, "--> startAnimation2()");
             startAnimation2();
         }
     }
@@ -648,12 +654,13 @@ public class Switch extends CompoundButton
     
     @Override
     public void toggle() {
+        Log.d(TAG, "--> toggle() checked: " + mChecked);
         setChecked(!mChecked);
     }
 
     @Override
     public void setChecked(boolean checked) {
-        Log.d(TAG, "-->setChecked: " + checked);
+        Log.d(TAG, "--> setChecked: " + checked);
         if (mInvalidate) {
             animateThumbToCheckedState(checked);
         }
@@ -818,8 +825,8 @@ public class Switch extends CompoundButton
         // mBottomLayer.setBounds(switchLeft, switchTop, switchRight, switchBottom);
         // mBottomLayer.draw(canvas);
 
-        mBottomLayer.setBounds(0, 0, getWidth(), getHeight());
-        mBottomLayer.draw(canvas);
+        // mBottomLayer.setBounds(0, 0, getWidth(), getHeight());
+        // mBottomLayer.draw(canvas);
 
         // mBottomLayer.setBounds(switchLeft, switchTop, switchRight, switchBottom);
 
@@ -845,8 +852,8 @@ public class Switch extends CompoundButton
         final int thumbDistance = (switchInnerRight - switchInnerLeft - thumbWidth);
         final int alpha = 255 * thumbPos / thumbDistance;
 
-        Log.d(TAG, "thumbPos: " + thumbPos + " switchInnerLeft: " +
-              switchInnerLeft + " switchInnerRight: " + switchInnerRight);
+        // Log.d(TAG, "thumbPos: " + thumbPos + " switchInnerLeft: " +
+        //      switchInnerLeft + " switchInnerRight: " + switchInnerRight);
         // Log.d(TAG, "thumbDistance: " + thumbDistance + " thumbWidth: " + thumbWidth);
 
         drawTracks(alpha, canvas);
