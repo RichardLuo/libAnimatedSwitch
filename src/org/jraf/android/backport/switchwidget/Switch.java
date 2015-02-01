@@ -71,7 +71,6 @@ public class Switch extends CompoundButton
         implements ValueAnimator.AnimatorUpdateListener, Animator.AnimatorListener {
     
     private static final String TAG = "Switch";
-    private boolean mCheckedAnim = true;
     private int mThumbDistance = 0;
 
     static class BounceInterpolator implements Interpolator {
@@ -91,18 +90,21 @@ public class Switch extends CompoundButton
         }
 
         public float getInterpolation(float t) {
-            float ts=(t/1.0f)*t;
+            float ts = (t/1.0f)*t;
             t /= 1.0f;
-            float tc=ts*t;
+            float tc = ts * t;
             return mTension*(4.8f*tc*ts - 18.0975f*ts*ts + 26.595f*tc -19.395f*ts + 7.0975f*t);
         }
     }
 
     enum ThumbState {
         TS_STOPPED,
-        TS_SQUASHING,
-        TS_SLIDING,
-    }
+                TS_SQUASHING,
+                TS_SQUASHING_TO_RESTORE,
+                TS_RESTORING,
+                TS_SQUASHING_TO_SLIDING,
+                TS_SLIDING,
+                }
 
     private ThumbState mThumbState;
 
@@ -207,7 +209,7 @@ public class Switch extends CompoundButton
         init();
     }
 
-    private static final int THUMB_SQUASH_RATIO = 3000;
+    private static final int THUMB_SQUASH_RATIO = 1600;
 
     /**
      * Construct a new Switch with a default style determined by the given theme attribute,
@@ -507,7 +509,7 @@ public class Switch extends CompoundButton
                     mTouchY = y;
                     if (mThumbState == ThumbState.TS_STOPPED) {
                         mThumbState = ThumbState.TS_SQUASHING;
-                        startSquashAnim();
+                        startSquashAnim(200);
                     }
                 }
                 break;
@@ -592,9 +594,9 @@ public class Switch extends CompoundButton
             } else {
                 newState = getTargetCheckedState();
             }
-            animateThumbToCheckedState(newState);
+            animateThumbToCheckedState(mChecked, newState);
         } else {
-            animateThumbToCheckedState(isChecked());
+            animateThumbToCheckedState(mChecked, mChecked);
         }
     }
 
@@ -604,16 +606,96 @@ public class Switch extends CompoundButton
 
     @Override
     public void onAnimationEnd(Animator animator) {
-        if (animator == mSquashAnim) {
-            Log.d(TAG, "finished anima1, mCheckedAnim" + mCheckedAnim + " mTouchMode:" + mTouchMode);
-            if (mTouchMode == TOUCH_MODE_IDLE) {
+        switch (mThumbState) {
+            case TS_SQUASHING_TO_RESTORE: {
+                if (mSquashAnim != animator) {
+                    throw new IllegalArgumentException("invalid anim");
+                }
                 startRestoreAnim();
+                mThumbState = ThumbState.TS_RESTORING;
+                break;
             }
-        } else if (animator == mRestoreAnim) {
+            case TS_RESTORING: {
+                if (mRestoreAnim != animator) {
+                    throw new IllegalArgumentException("invalid anim");
+                }
+                mThumbState = ThumbState.TS_STOPPED;
+                break;
+            }
+            case TS_SQUASHING_TO_SLIDING: {
+                if (mSquashAnim != animator) {
+                    throw new IllegalArgumentException("invalid anim");
+                }
+                startRestoreAnim();
+                startSlidingAnim();
+                mThumbState = ThumbState.TS_SLIDING;
+                break;
+            }
+            case TS_SLIDING: {
+                if (mSlidingAnim == animator) {
+                    mThumbState = ThumbState.TS_STOPPED;
+                }
+                break;
+            }
+            case TS_SQUASHING: {
+                Log.d(TAG, "squash finished, must on dragging: " + mTouchMode);
+                if (mTouchMode == TOUCH_MODE_IDLE) {
+                    startRestoreAnim();
+                    mThumbState = ThumbState.TS_RESTORING;
+                }
+                break;
+            }
+            case TS_STOPPED: {
+                throw new IllegalArgumentException("invalid anim");
+            }
+        }
+    }
 
-        } else if (animator == mMoveAnim || animator == mAnimatorSet) {
-            mThumbState = ThumbState.TS_STOPPED;
-            mCheckedAnim = true;
+    private void animateThumbToCheckedState(boolean old_check, boolean new_check) {
+        Log.d(TAG, "--> animateThumbToCheckedState, newCheck:" + new_check);
+        mChecked = new_check;
+        switch (mThumbState) {
+            case TS_SQUASHING: {
+                if (old_check == new_check) {
+                    if (mSquashAnim.isRunning()) {
+                        mThumbState = ThumbState.TS_SQUASHING_TO_RESTORE;
+                    } else {
+                        startRestoreAnim();
+                        mThumbState = ThumbState.TS_RESTORING;
+                    }
+                } else {
+                    if (mSquashAnim.isRunning()) {
+                        mThumbState = ThumbState.TS_SQUASHING_TO_SLIDING;
+                    } else {
+                        mThumbState = ThumbState.TS_SLIDING;
+                        startRestoreAnim();
+                        startSlidingAnim();
+                    }
+                }
+                break;
+            }
+            case TS_RESTORING: {
+                if (old_check != new_check) {
+                    if (mRestoreAnim.isRunning()) {
+                        mRestoreAnim.cancel();
+                        startSlidingAnim();
+                        mThumbState = ThumbState.TS_SLIDING;
+                    }
+                }
+                break;
+            }
+            case TS_STOPPED: {
+                if (old_check != new_check) {
+                    startSlidingAnim();
+                    mThumbState = ThumbState.TS_SLIDING;
+                    // mThumbState = ThumbState.TS_SQUASHING;
+                    // startSquashAnim(200);
+                }
+                Log.d(TAG, "TS_STOPPED, should be a quick click, do sliding");
+                break;
+            }
+            default:
+                throw new IllegalArgumentException("Impossible: " + mThumbState);
         }
     }
 
@@ -635,16 +717,21 @@ public class Switch extends CompoundButton
 
     private ValueAnimator mSquashAnim;
     private ValueAnimator mRestoreAnim;
-    private ValueAnimator mMoveAnim;
+    private ValueAnimator mSlidingAnim;
     private AnimatorSet   mAnimatorSet;
 
-    private void startSquashAnim() {
+    private void startSquashAnim(int duration) {
         mSquashAnim =
                 ObjectAnimator.ofInt(mThumbDrawable, "level", THUMB_SQUASH_RATIO);
-        mSquashAnim.setDuration(150);
+        mSquashAnim.setDuration(duration);
         mSquashAnim.addListener(this);
         mSquashAnim.addUpdateListener(this);
         mSquashAnim.start();
+        // mAnimatorSet = new AnimatorSet();
+        // mAnimatorSet.setDuration(duration);
+        // mAnimatorSet.addListener(this);
+        // mAnimatorSet.play(mSquashAnim);
+        // mAnimatorSet.start();
     }
 
     private void startRestoreAnim() {
@@ -661,49 +748,35 @@ public class Switch extends CompoundButton
 
         final float dstPosi = !mChecked ? 0f : getThumbScrollRange();
         Log.d(TAG, "dstPosi:" + dstPosi);
-        mMoveAnim = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
-        mMoveAnim.addUpdateListener(this);
-        
+        mSlidingAnim = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
+        mSlidingAnim.addUpdateListener(this);
+
         mAnimatorSet = new AnimatorSet();
         mAnimatorSet.addListener(this);
         mAnimatorSet.setDuration(200);
         mAnimatorSet.setInterpolator(new BounceInterpolator(1.0f));
-        mAnimatorSet.playTogether(mRestoreAnim, mMoveAnim);
+        mAnimatorSet.playTogether(mRestoreAnim, mSlidingAnim);
         mAnimatorSet.start();
     }
 
-    private void startMoveAnim() {
+    private void startSlidingAnim() {
         final float dstPosi = !mChecked ? 0f : getThumbScrollRange();
         // Log.d(TAG, "dstPosi:" + dstPosi);
-        mMoveAnim = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
-        mMoveAnim.setInterpolator(new BounceInterpolator(1.0f));
-        mMoveAnim.setDuration(200);
-        mMoveAnim.addListener(this);
-        mMoveAnim.addUpdateListener(this);
-        mMoveAnim.start();
-    }
-
-
-    private void animateThumbToCheckedState(boolean newCheckedState) {
-        Log.d(TAG, "--> animateThumbToCheckedState, newCheck:" + newCheckedState);
-        mChecked = newCheckedState;
-        if (mSquashAnim == null || mThumbState == ThumbState.TS_STOPPED) {
-            // startSquashAnim();
-            // mCheckedAnim = false;
-            startMoveAnim();
-        } else if (mSquashAnim.isRunning()) {
-            Log.d(TAG, "--> cancel anim1");
-            mSquashAnim.cancel();
-            startRestoreAnim();
-            startMoveAnim();
-        } else {
-            startRestoreAnim();
-            startMoveAnim();
-        }
+        mSlidingAnim = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
+        mSlidingAnim.setInterpolator(new BounceInterpolator(1.0f));
+        mSlidingAnim.setDuration(200);
+        mSlidingAnim.addListener(this);
+        mSlidingAnim.addUpdateListener(this);
+        mSlidingAnim.start();
     }
 
     private boolean getTargetCheckedState() {
         return mThumbPosition >= getThumbScrollRange() / 2;
+    }
+
+    @Override
+    public boolean performClick() {
+        return super.performClick();
     }
 
     @Override
@@ -714,14 +787,15 @@ public class Switch extends CompoundButton
     @Override
     public void toggle() {
         Log.d(TAG, "--> toggle() checked: " + mChecked);
-        setChecked(!mChecked);
+        // setChecked(!mChecked);
     }
 
     @Override
     public void setChecked(boolean checked) {
+        // super.setChecked(checked);
         Log.d(TAG, "--> setChecked: " + checked);
         if (mInvalidate) {
-            animateThumbToCheckedState(checked);
+            animateThumbToCheckedState(mChecked, checked);
         }
         mChecked = checked;
     }
