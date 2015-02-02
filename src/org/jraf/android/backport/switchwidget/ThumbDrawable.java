@@ -19,6 +19,7 @@ import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.Log;
+import android.view.Gravity;
 
 public class ThumbDrawable extends Drawable {
     private static final String TAG = "ThumbDrawable";
@@ -35,6 +36,8 @@ public class ThumbDrawable extends Drawable {
 
     private final Drawable      mThumbDrawable;
     private final Bitmap        mThumbBitmap;
+
+    private int mGravity = Gravity.NO_GRAVITY;
 
     static void setXY(float[] array, int index, float x, float y) {
         array[index * 2 + 0] = x;
@@ -118,14 +121,14 @@ public class ThumbDrawable extends Drawable {
     }
 
     @Override
-    public int getIntrinsicWidth() {
-        final int w = mThumbDrawable.getIntrinsicWidth();
-        return w + (w * mMaxSquashRatio / 10000);
+    public int getIntrinsicHeight() {
+        return mThumbDrawable.getIntrinsicHeight();
     }
 
     @Override
-    public int getIntrinsicHeight() {
-        return mThumbDrawable.getIntrinsicHeight();
+    public int getIntrinsicWidth() {
+        final int w = mThumbDrawable.getIntrinsicWidth();
+        return w + (w * mMaxSquashRatio / 10000);
     }
 
     private int getActualWidth() {
@@ -133,12 +136,27 @@ public class ThumbDrawable extends Drawable {
         return w + (w * getLevel() / 10000);
     }
 
+    void setGravity(int gravity) {
+        mGravity = gravity;
+    }
+
+    private int getOffsetX() {
+        final int distance = getIntrinsicWidth() - getActualWidth();
+        switch (mGravity) {
+            case Gravity.NO_GRAVITY:
+                return distance * mPosition / 10000;
+            case Gravity.LEFT:
+                return 0;
+            case Gravity.RIGHT:
+                return distance;
+        }
+        throw new IllegalArgumentException("invalid gravity: " + mGravity);
+    }
+
     @Override
     public void draw(Canvas canvas) {
-        final int distance = getIntrinsicWidth() - getActualWidth();
-        final int x = distance * mPosition / 10000;
         canvas.save();
-        canvas.translate(x, 0);
+        canvas.translate(getOffsetX(), 0);
         squashMatrix();
         canvas.drawBitmapMesh(mThumbBitmap, WIDTH, HEIGHT, mVerts, 0, null, 0, null);
         canvas.restore();
