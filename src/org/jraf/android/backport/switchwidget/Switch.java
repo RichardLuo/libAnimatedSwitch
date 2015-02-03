@@ -75,10 +75,10 @@ public class Switch extends CompoundButton
     private int mThumbDistance = 0;
     private boolean mHitThumb = false;
 
-    static class QuinTicBezierInterpolator implements Interpolator {
+    static class QuinticBezierInterpolator implements Interpolator {
         private final float mTension;
 
-        public QuinTicBezierInterpolator() {
+        public QuinticBezierInterpolator() {
             mTension = 2.0f;
         }
 
@@ -87,7 +87,7 @@ public class Switch extends CompoundButton
          *                no overshoot and the interpolator becomes a simple
          *                deceleration interpolator.
          */
-        public QuinTicBezierInterpolator(float tension) {
+        public QuinticBezierInterpolator(float tension) {
             mTension = tension;
         }
 
@@ -832,8 +832,7 @@ public class Switch extends CompoundButton
 
     private void startRestoreAnim() {
         mRestoreAnim = ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
-        // mRestoreAnim.setInterpolator(new DecelerateInterpolator(1.0f));
-        mRestoreAnim.setDuration(200);
+        mRestoreAnim.setDuration(150);
         mRestoreAnim.addListener(this);
         mRestoreAnim.addUpdateListener(this);
         mRestoreAnim.start();
@@ -851,7 +850,7 @@ public class Switch extends CompoundButton
         mAnimatorSet = new AnimatorSet();
         mAnimatorSet.addListener(this);
         mAnimatorSet.setDuration(200);
-        mAnimatorSet.setInterpolator(new QuinTicBezierInterpolator(1.0f));
+        mAnimatorSet.setInterpolator(new QuinticBezierInterpolator(1.0f));
         mAnimatorSet.playTogether(mRestoreAnim, mSlidingAnim);
         mAnimatorSet.start();
     }
@@ -867,7 +866,7 @@ public class Switch extends CompoundButton
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.4f, 1.89f, 0.47f, 0.78f));
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.41f, 1.29f, 0.63f, 1.0f));
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.44f, 1.37f, 0.47f, 1.1f));
-        mSlidingAnim.setInterpolator(new QuinTicBezierInterpolator(1.0f));
+        mSlidingAnim.setInterpolator(new QuinticBezierInterpolator(1.0f));
         mSlidingAnim.setDuration(150);
         mSlidingAnim.addListener(this);
         mSlidingAnim.addUpdateListener(this);
