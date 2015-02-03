@@ -18,6 +18,7 @@ import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.RotateDrawable;
 import android.util.Log;
 import android.view.Gravity;
 
@@ -44,6 +45,7 @@ public class ThumbDrawable extends Drawable {
     static void setXY(float[] array, int index, float x, float y) {
         array[index * 2 + 0] = x;
         array[index * 2 + 1] = y;
+
     }
 
     static float getX(float[] array, int index) {
@@ -56,6 +58,8 @@ public class ThumbDrawable extends Drawable {
 
     public void setOnWorking(boolean working) {
         mOnWorking = working;
+        mRotateCircle.setLevel(0);
+        mRotateCircle.setVisible(working, true);
     }
 
     private void squashMatrix() {
@@ -104,7 +108,7 @@ public class ThumbDrawable extends Drawable {
     }
 
     public int getWorkingLevel() {
-        mRotateCircle.setAlpha(0x30);
+        // mRotateCircle.setAlpha(0x30);
         return mRotateCircle.getLevel();
     }
 
@@ -179,10 +183,10 @@ public class ThumbDrawable extends Drawable {
         if (mOnWorking) {
             final int cx = x + getActualWidth() / 2;
             final int cy = getIntrinsicHeight() / 2;
-            final int r = getIntrinsicHeight() * 4 / 5 / 2;
+            final int r = mRotateCircle.getIntrinsicWidth()/2;
             mRotateCircle.setBounds(cx-r, cy-r, cx + r, cy+r);
+            mRotateCircle.draw(canvas);
         }
-        mRotateCircle.draw(canvas);
         canvas.restore();
     }
 

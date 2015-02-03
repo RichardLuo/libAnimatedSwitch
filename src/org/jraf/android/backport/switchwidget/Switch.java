@@ -49,12 +49,14 @@ import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
 import android.view.animation.Interpolator;
+import android.view.animation.LinearInterpolator;
 import android.widget.CompoundButton;
 
 import com.actionbarsherlock.internal.nineoldandroids.animation.AnimatorSet;
 import com.actionbarsherlock.internal.nineoldandroids.animation.ObjectAnimator;
 import com.actionbarsherlock.internal.nineoldandroids.animation.ValueAnimator;
 import com.actionbarsherlock.internal.nineoldandroids.animation.Animator;
+import com.actionbarsherlock.internal.view.View_HasStateListenerSupport;
 
 /**
  * A Switch is a two-state toggle switch widget that can select between two
@@ -76,41 +78,21 @@ public class Switch extends CompoundButton
     private boolean mHitThumb = false;
 
     static class QuinticBezierInterpolator implements Interpolator {
-        private final float mTension;
-
-        public QuinticBezierInterpolator() {
-            mTension = 2.0f;
-        }
-
-        /**
-         * @param tension Amount of overshoot. When tension equals 0.0f, there is
-         *                no overshoot and the interpolator becomes a simple
-         *                deceleration interpolator.
-         */
-        public QuinticBezierInterpolator(float tension) {
-            mTension = tension;
-        }
-
         public float getInterpolation(float t) {
             final double ts = t*t;
             final double tc = ts*t;
             return (float) (-5.9475*tc*ts + 22.1425*ts*ts - 28.69*tc + 13.595*ts - 0.1*t);
-            // float ts = (t/1.0f)*t;
-            // t /= 1.0f;
-            // float tc = ts * t;
-            // return mTension*(4.8f*tc*ts - 18.0975f*ts*ts + 26.595f*tc -19.395f*ts + 7.0975f*t);
         }
     }
 
     enum ThumbState {
         TS_STOPPED,
         TS_SQUASHING,
-        TS_SQUASHING_ENDED,
         TS_SQUASHING_TO_RESTORE,
         TS_SQUASHING_TO_WORKING,
         TS_WORKING,
+        TS_WORKING_TO_FINAL,
         TS_RESTORING,
-        TS_SLIDING,
     }
 
     private ThumbState mThumbState;
@@ -169,7 +151,8 @@ public class Switch extends CompoundButton
     private float mRoundRadius;
     private boolean mChecked = false;
     private boolean mInvalidate = false;
-    
+    private boolean mTouchable = true;
+
     private void init() {
         mBottomLayer = new ShapeDrawable();
         mBottomLayer.getPaint().setAntiAlias(true);
@@ -497,9 +480,21 @@ public class Switch extends CompoundButton
         invalidate();
     }
 
+    private void setTouchable(boolean touchable) {
+        mTouchable = touchable;
+        if (!touchable) {
+            mVelocityTracker.clear();
+        }
+    }
+
     @SuppressLint("NewApi")
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
+        if (!mTouchable) {
+            Log.d(TAG, "un-touchable!");
+            return true;
+        }
+
         mVelocityTracker.addMovement(ev);
 
         final int action;
@@ -519,6 +514,7 @@ public class Switch extends CompoundButton
                     if (mThumbState == ThumbState.TS_STOPPED) {
                         mThumbState = ThumbState.TS_SQUASHING;
                         startSquashAnim(200);
+                        Log.d(TAG, "touched here!");
                     }
                 }
                 break;
@@ -538,7 +534,7 @@ public class Switch extends CompoundButton
                         mTouchX = x;
                         mTouchY = y;
                         return true;
-                            // }
+                        // }
                         // break;
                     }
 
@@ -567,7 +563,7 @@ public class Switch extends CompoundButton
                 mVelocityTracker.clear();
                 // if (action == MotionEvent.ACTION_CANCEL) {
                 //     if (mThumbState == ThumbState.TS_SQUASHING) {
-                //         mSquashAnim.cancel();
+                //         mSquashAnim.end();
                 //         startRestoreAnim();
                 //         mThumbState = ThumbState.TS_RESTORING;
                 //     }
@@ -623,11 +619,9 @@ public class Switch extends CompoundButton
         switch (mThumbState) {
             case TS_SQUASHING: {
                 final boolean keep = mTouchMode == TOUCH_MODE_DRAGGING ||
-                        (mTouchMode == TOUCH_MODE_DOWN && mHitThumb);
+                                     (mTouchMode == TOUCH_MODE_DOWN && mHitThumb);
                 Log.d(TAG, "squash finished, keep: " + keep);
-                if (keep) {
-                    mThumbState = ThumbState.TS_SQUASHING_ENDED;
-                } else {
+                if (!keep) {
                     startRestoreAnim();
                     mThumbState = ThumbState.TS_RESTORING;
                 }
@@ -654,22 +648,31 @@ public class Switch extends CompoundButton
                 }
                 startWorkingAnim();
                 mThumbState = ThumbState.TS_WORKING;
-                // startRestoreAnim();
-                // startSlidingAnim();
-                // mThumbDrawable.setGravity(mChecked ? Gravity.RIGHT : Gravity.LEFT);
-                // mThumbState = ThumbState.TS_SLIDING;
                 break;
             case TS_WORKING:
-                // if (animator == mSlidingAnim) {
-                //     mThumbDrawable.setOnWorking(true);
-                // }
+                if (animator != mWorkingAnim) {
+                    Log.d(TAG, "amazing not working anim!");
+                }
+                Log.d(TAG, "working anim must be canceled");
                 break;
-            case TS_SLIDING: {
-                if (mSlidingAnim == animator) {
+            case TS_WORKING_TO_FINAL:
+                if (animator == mSlidingAnim) {
+                    Log.d(TAG, "got sliding anim end, running: " + mSlidingAnim.isRunning());
+                }
+                if (animator == mRestoreAnim) {
+                    Log.d(TAG, "got restoring anim end, running: " + mRestoreAnim.isRunning());
+                }
+                boolean ended = false;
+                if (animator == mSlidingAnim) {
+                    ended = (mRestoreAnim == null || !mRestoreAnim.isRunning());
+                } else if (animator == mRestoreAnim) {
+                    ended = (mSlidingAnim == null || !mSlidingAnim.isRunning());
+                }
+                if (ended) {
+                    setTouchable(true);
                     mThumbState = ThumbState.TS_STOPPED;
                 }
                 break;
-            }
             case TS_STOPPED: {
                 if (mSlidingAnim != animator) {
                     // throw new IllegalArgumentException("an anim ended in stopped state!");
@@ -685,54 +688,34 @@ public class Switch extends CompoundButton
     }
 
     private void animateToFinalState(boolean old_check, boolean new_check) {
-        Log.d(TAG, "--> newCheck:" + new_check + " from-thumb-state" + mThumbState);
+        final boolean cancel = (old_check == new_check); 
+        Log.d(TAG, "--> animateToFinalState, new_check: " + new_check
+              + " thumb-state: " + mThumbState + " cancel: " + cancel);
         mChecked = new_check;
         switch (mThumbState) {
-            case TS_WORKING:
             case TS_SQUASHING:
-            case TS_SQUASHING_ENDED: {
-               if (old_check == new_check) {
-                    if (mSquashAnim.isRunning()) {
-                        mThumbState = ThumbState.TS_SQUASHING_TO_RESTORE;
-                    } else {
-                        if (!IsThumbPosiAnchored()) {
-                            startSlidingAnim();
-                        }
-                        startRestoreAnim();
-                        mThumbState = ThumbState.TS_RESTORING;
-                        Log.d(TAG, "--> " + mThumbState);
-                    }
+                setTouchable(false);
+            case TS_WORKING:
+            case TS_SQUASHING_TO_WORKING:
+                if (mSquashAnim.isRunning()) {
+                    mSquashAnim.removeListener(this);
+                    mSquashAnim.end();
+                }
+                if (mWorkingAnim != null &&
+                    mWorkingAnim.isRunning()) {
+                    mWorkingAnim.removeListener(this);
+                    mWorkingAnim.end();
+                }
+                mThumbDrawable.setOnWorking(false);
+                final boolean sliding = startSlidingAnim();
+                final boolean restoring = startRestoreAnim();
+                if (sliding || restoring) {
+                    mThumbState = ThumbState.TS_WORKING_TO_FINAL;
                 } else {
-                    if (mSquashAnim.isRunning()) {
-                        mThumbState = ThumbState.TS_SQUASHING_TO_WORKING;
-                    } else {
-                        mThumbState = ThumbState.TS_SLIDING;
-                        startRestoreAnim();
-                        startSlidingAnim();
-                    }
+                    setTouchable(true);
+                    mThumbState = ThumbState.TS_STOPPED;
                 }
                 break;
-            }
-            case TS_RESTORING: {
-                if (old_check != new_check) {
-                    if (mRestoreAnim.isRunning()) {
-                        mRestoreAnim.cancel();
-                        startSlidingAnim();
-                        mThumbState = ThumbState.TS_SLIDING;
-                    }
-                }
-                break;
-            }
-            case TS_STOPPED: {
-                if (old_check != new_check) {
-                    startSlidingAnim();
-                    mThumbState = ThumbState.TS_SLIDING;
-                    // mThumbState = ThumbState.TS_SQUASHING;
-                    // startSquashAnim(200);
-                }
-                Log.d(TAG, "TS_STOPPED, should be a quick click, do sliding");
-                break;
-            }
             default:
                 throw new IllegalArgumentException("Impossible: " + mThumbState);
         }
@@ -742,27 +725,35 @@ public class Switch extends CompoundButton
     private void animateToWorkingState() {
         switch (mThumbState) {
             case TS_SQUASHING:
-                mThumbState = ThumbState.TS_SQUASHING_TO_WORKING;
+                if (mSquashAnim.isRunning()) {
+                    mThumbState = ThumbState.TS_SQUASHING_TO_WORKING;
+                } else {
+                    startWorkingAnim();
+                    mThumbState = ThumbState.TS_WORKING;
+                }
+                setTouchable(false);
                 break;
-            case TS_SQUASHING_ENDED:    // drag and released
-                startWorkingAnim();
-                mThumbState = ThumbState.TS_WORKING;
-                break;
-            case TS_RESTORING: {
-                break;
-            }
+            case TS_RESTORING:
+                Log.d(TAG, "from TS_RESTORING to working!");
+                if (mRestoreAnim.isRunning()) {
+                    mRestoreAnim.removeListener(this);
+                    mRestoreAnim.end();
+                }
+                if (mSlidingAnim.isRunning()) {
+                    mSlidingAnim.removeListener(this);
+                    mSlidingAnim.end();
+                }
             case TS_STOPPED: {
-                startSlidingAnim();
-                mThumbState = ThumbState.TS_SLIDING;
-                // mThumbState = ThumbState.TS_SQUASHING;
-                // startSquashAnim(200);
+                setTouchable(false);
+                startSquashAnim(200);
+                mThumbState = ThumbState.TS_SQUASHING_TO_WORKING;                
                 Log.d(TAG, "TS_STOPPED, should be a quick click, do sliding");
                 break;
             }
             default:
                 throw new IllegalArgumentException("Impossible: " + mThumbState);
         }
-        Log.d(TAG, "--> thumb-state: " + mThumbState);
+        Log.d(TAG, "--> animateToWorkingState end, thumb-state: " + mThumbState);
     }
 
 
@@ -822,20 +813,27 @@ public class Switch extends CompoundButton
 
         mWorkingAnim = ObjectAnimator.ofInt(mThumbDrawable, "workingLevel", 10000);
         mWorkingAnim.setDuration(500);
+        mWorkingAnim.setInterpolator(new LinearInterpolator());
         mWorkingAnim.addListener(this);
         mWorkingAnim.addUpdateListener(this);
         mWorkingAnim.setRepeatMode(ValueAnimator.RESTART);
         mWorkingAnim.setRepeatCount(ValueAnimator.INFINITE);
         mWorkingAnim.start();
-
+        mThumbDrawable.setOnWorking(true);
     }
 
-    private void startRestoreAnim() {
+    private boolean startRestoreAnim() {
+        final int level = mThumbDrawable.getLevel();
+        if (level == 0 || level > THUMB_SQUASH_RATIO) {
+            return false;
+        }
+        final int duration = level * 150 / THUMB_SQUASH_RATIO;
         mRestoreAnim = ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
-        mRestoreAnim.setDuration(150);
+        mRestoreAnim.setDuration(duration);
         mRestoreAnim.addListener(this);
         mRestoreAnim.addUpdateListener(this);
         mRestoreAnim.start();
+        return true;
     }
 
     private void startMoveAndRestore() {
@@ -850,27 +848,31 @@ public class Switch extends CompoundButton
         mAnimatorSet = new AnimatorSet();
         mAnimatorSet.addListener(this);
         mAnimatorSet.setDuration(200);
-        mAnimatorSet.setInterpolator(new QuinticBezierInterpolator(1.0f));
+        mAnimatorSet.setInterpolator(new QuinticBezierInterpolator());
         mAnimatorSet.playTogether(mRestoreAnim, mSlidingAnim);
         mAnimatorSet.start();
     }
 
-    private void startSlidingAnim() {
-        final float dstPosi = !mChecked ? 0f : getThumbScrollRange();
-        // Log.d(TAG, "dstPosi:" + dstPosi);
-        mSlidingAnim = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
-        // 
+    private boolean startSlidingAnim() {
+        final float position = !mChecked ? 0f : getThumbScrollRange();
+        final float distance = Math.abs(mThumbPosition - position);
+        final int duration = (int) (distance * 150 / getThumbScrollRange());
+        if (0 >= duration || duration > 150) {
+            return false;
+        }
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.53f, 1.26f, 0.51f, 1.06f));
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.9f, 1.38f, 0.43f, 1.21f));
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.38f, 0.84f, 0.46f, 1.45f));
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.4f, 1.89f, 0.47f, 0.78f));
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.41f, 1.29f, 0.63f, 1.0f));
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.44f, 1.37f, 0.47f, 1.1f));
-        mSlidingAnim.setInterpolator(new QuinticBezierInterpolator(1.0f));
-        mSlidingAnim.setDuration(150);
+        mSlidingAnim = ObjectAnimator.ofFloat(this, "thumbPosition", position);
+        mSlidingAnim.setInterpolator(new QuinticBezierInterpolator());
+        mSlidingAnim.setDuration(duration);
         mSlidingAnim.addListener(this);
         mSlidingAnim.addUpdateListener(this);
         mSlidingAnim.start();
+        return true;
     }
 
     private boolean getTargetCheckedState() {
@@ -889,7 +891,7 @@ public class Switch extends CompoundButton
     
     @Override
     public void toggle() {
-        Log.d(TAG, "--> toggle() checked: " + mChecked);
+        Log.d(TAG, "--> toggle() current checked: " + mChecked);
         animateToWorkingState();
     }
 
