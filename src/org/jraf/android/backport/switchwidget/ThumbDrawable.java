@@ -35,9 +35,11 @@ public class ThumbDrawable extends Drawable {
     private final Paint mPaint;
 
     private final Drawable      mThumbDrawable;
+    private final Drawable      mRotateCircle;
     private final Bitmap        mThumbBitmap;
 
     private int mGravity = Gravity.NO_GRAVITY;
+    private boolean mOnWorking = false;
 
     static void setXY(float[] array, int index, float x, float y) {
         array[index * 2 + 0] = x;
@@ -52,6 +54,9 @@ public class ThumbDrawable extends Drawable {
         return array[index * 2 + 1];
     }
 
+    public void setOnWorking(boolean working) {
+        mOnWorking = working;
+    }
 
     private void squashMatrix() {
         int index = 0;
@@ -86,6 +91,7 @@ public class ThumbDrawable extends Drawable {
     }
 
     private int mPosition = 0;
+    private int mWorkingLevel = 0;
 
     private final int mMaxSquashRatio;
 
@@ -97,11 +103,21 @@ public class ThumbDrawable extends Drawable {
         mPosition = posi;
     }
 
-    public ThumbDrawable(Drawable drawable, int squash_ratio) {
+    public int getWorkingLevel() {
+        mRotateCircle.setAlpha(0x30);
+        return mRotateCircle.getLevel();
+    }
+
+    public void setWorkingLevel(int level) {
+        mRotateCircle.setLevel(level);
+    }
+
+    public ThumbDrawable(Drawable drawable, Drawable circle, int squash_ratio) {
         mRect = new RectF();
         mPaint = new Paint();
         mMaxSquashRatio = squash_ratio;
         mThumbDrawable = drawable;
+        mRotateCircle = circle;
         if (drawable instanceof BitmapDrawable) {
             final BitmapDrawable bm = (BitmapDrawable) drawable;
             mThumbBitmap = bm.getBitmap();
@@ -156,9 +172,17 @@ public class ThumbDrawable extends Drawable {
     @Override
     public void draw(Canvas canvas) {
         canvas.save();
+        final int x = getOffsetX();
         canvas.translate(getOffsetX(), 0);
         squashMatrix();
         canvas.drawBitmapMesh(mThumbBitmap, WIDTH, HEIGHT, mVerts, 0, null, 0, null);
+        if (mOnWorking) {
+            final int cx = x + getActualWidth() / 2;
+            final int cy = getIntrinsicHeight() / 2;
+            final int r = getIntrinsicHeight() * 4 / 5 / 2;
+            mRotateCircle.setBounds(cx-r, cy-r, cx + r, cy+r);
+        }
+        mRotateCircle.draw(canvas);
         canvas.restore();
     }
 
