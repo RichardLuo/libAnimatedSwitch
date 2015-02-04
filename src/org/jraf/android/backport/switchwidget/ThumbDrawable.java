@@ -56,9 +56,9 @@ public class ThumbDrawable extends Drawable {
         return array[index * 2 + 1];
     }
 
-    public void setOnWorking(boolean working) {
+    public void setOnWorking(boolean working, boolean dir) {
         mOnWorking = working;
-        mRotateCircle.setLevel(0);
+        mRotateCircle.setLevel(dir ? 0 : 10000);
         mRotateCircle.setVisible(working, true);
     }
 
