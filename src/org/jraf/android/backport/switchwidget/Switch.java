@@ -38,6 +38,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ShapeDrawable;
 import android.graphics.drawable.shapes.RoundRectShape;
 import android.os.Build;
+import android.os.SystemClock;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -496,6 +497,9 @@ public class Switch extends CompoundButton
                 && !mSquashAnim.isRunning());
     }
 
+    private long mStartClickTime = 0;
+    private static final int MAX_CLICK_DURATION = 200;
+
     @SuppressLint("NewApi")
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
@@ -516,13 +520,14 @@ public class Switch extends CompoundButton
         final float y = ev.getY();
         switch (action) {
             case MotionEvent.ACTION_DOWN: {
-                if (isEnabled() && hitThumb(x, y)) {
+                if (isEnabled() && (mHitThumb = hitThumb(x, y))) {
                     mTouchMode = TOUCH_MODE_DOWN;
                     mTouchX = x;
                     mTouchY = y;
                     if (mThumbState == ThumbState.TS_STOPPED) {
                         mThumbState = ThumbState.TS_SQUASHING;
                         startSquashAnim(SQUASHING_ANIM_DURATION);
+                        mStartClickTime = SystemClock.uptimeMillis();
                         Log.d(TAG, "touched here!");
                     }
                 }
@@ -536,7 +541,6 @@ public class Switch extends CompoundButton
                         break;
 
                     case TOUCH_MODE_DOWN: {
-                        mHitThumb = hitThumb(x, y);
                         // if (Math.abs(x - mTouchX) > mTouchSlop || Math.abs(y - mTouchY) > mTouchSlop) {
                         mTouchMode = TOUCH_MODE_DRAGGING;
                         getParent().requestDisallowInterceptTouchEvent(true);
@@ -595,19 +599,20 @@ public class Switch extends CompoundButton
         // Up and not canceled, also checks the switch has not been disabled during the drag
         final boolean commitChange = ev.getAction() == MotionEvent.ACTION_UP && isEnabled();
 
-        cancelSuperTouch(ev);
-
-        boolean newState = mChecked;
+        boolean newChecked = mChecked;
         if (commitChange) {
             mVelocityTracker.computeCurrentVelocity(1000);
             final float xvel = mVelocityTracker.getXVelocity();
             if (Math.abs(xvel) > mMinFlingVelocity) {
-                newState = xvel > 0;
+                newChecked = xvel > 0;
             } else {
-                newState = getTargetCheckedState();
+                newChecked = getTargetCheckedState();
             }
         }
-        if (newState != mChecked) {
+
+        final boolean toclick = (newChecked != mChecked ||
+                           (SystemClock.uptimeMillis() - mStartClickTime) < MAX_CLICK_DURATION);
+        if (toclick) {
             callOnClick();
             Log.d(TAG, "<< callOnClick(), mThumbState:" + mThumbState);
             animateToWorkingState();
@@ -615,6 +620,7 @@ public class Switch extends CompoundButton
             // actually it's restoring
             animateToFinalState(mChecked, mChecked);
         }
+        cancelSuperTouch(ev);
     }
 
     @Override
