@@ -183,7 +183,8 @@ public class ThumbDrawable extends Drawable {
         if (mOnWorking) {
             final int cx = x + getActualWidth() / 2;
             final int cy = getIntrinsicHeight() / 2;
-            final int r = mRotateCircle.getIntrinsicWidth()/2;
+            // final int r = mRotateCircle.getIntrinsicWidth()/2;
+            final int r = 20;
             mRotateCircle.setBounds(cx-r, cy-r, cx + r, cy+r);
             mRotateCircle.draw(canvas);
         }

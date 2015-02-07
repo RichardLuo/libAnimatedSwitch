@@ -728,14 +728,14 @@ public class Switch extends CompoundButton
                     mThumbState = ThumbState.TS_SQUASHING_TO_FINAL;
                     break;
                 }
+            case TS_STOPPED:
             case TS_WORKING:
             case TS_SQUASHING_TO_WORKING:
-                if (mSquashAnim.isRunning()) {
+                if (mSquashAnim != null && mSquashAnim.isRunning()) {
                     mSquashAnim.removeListener(this);
                     mSquashAnim.end();
                 }
-                if (mWorkingAnim != null &&
-                    mWorkingAnim.isRunning()) {
+                if (mWorkingAnim != null && mWorkingAnim.isRunning()) {
                     mWorkingAnim.removeListener(this);
                     mWorkingAnim.end();
                 }
@@ -812,7 +812,6 @@ public class Switch extends CompoundButton
     private ValueAnimator mWorkingAnim;
     private ValueAnimator mRestoreAnim;
     private ValueAnimator mSlidingAnim;
-    private AnimatorSet   mAnimatorSet;
 
     private void startSquashAnim(int duration) {
         mSquashAnim =
@@ -821,11 +820,6 @@ public class Switch extends CompoundButton
         mSquashAnim.addListener(this);
         mSquashAnim.addUpdateListener(this);
         mSquashAnim.start();
-        // mAimatorSet = new AnimatorSet();
-        // mAnimatorSet.setDuration(duration);
-        // mAnimatorSet.addListener(this);
-        // mAnimatorSet.play(mSquashAnim);
-        // mAnimatorSet.start();
     }
 
     private void startWorkingAnim() {
@@ -847,7 +841,7 @@ public class Switch extends CompoundButton
 
         final int level = mChecked ? 0  : 10000;
         mWorkingAnim = ObjectAnimator.ofInt(mThumbDrawable, "workingLevel", level);
-        mWorkingAnim.setDuration(500);
+        mWorkingAnim.setDuration(700);
         mWorkingAnim.setInterpolator(new LinearInterpolator());
         mWorkingAnim.addListener(this);
         mWorkingAnim.addUpdateListener(this);
@@ -864,28 +858,12 @@ public class Switch extends CompoundButton
         }
         final int duration = level * 150 / THUMB_SQUASH_RATIO;
         mRestoreAnim = ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
+        Log.d(TAG, "-->startRestoreAnim, duration:" + duration);
         mRestoreAnim.setDuration(duration);
         mRestoreAnim.addListener(this);
         mRestoreAnim.addUpdateListener(this);
         mRestoreAnim.start();
         return true;
-    }
-
-    private void startMoveAndRestore() {
-        mRestoreAnim = ObjectAnimator.ofInt(mThumbDrawable, "level", 0);
-        mRestoreAnim.addUpdateListener(this);
-
-        final float dstPosi = !mChecked ? 0f : getThumbScrollRange();
-        Log.d(TAG, "dstPosi:" + dstPosi);
-        mSlidingAnim = ObjectAnimator.ofFloat(this, "thumbPosition", dstPosi);
-        mSlidingAnim.addUpdateListener(this);
-
-        mAnimatorSet = new AnimatorSet();
-        mAnimatorSet.addListener(this);
-        mAnimatorSet.setDuration(200);
-        mAnimatorSet.setInterpolator(new QuinticBezierInterpolator());
-        mAnimatorSet.playTogether(mRestoreAnim, mSlidingAnim);
-        mAnimatorSet.start();
     }
 
     private boolean startSlidingAnim() {
@@ -903,6 +881,7 @@ public class Switch extends CompoundButton
         // mSlidingAnim.setInterpolator(new CubicBezierInterpolator(0.44f, 1.37f, 0.47f, 1.1f));
         mSlidingAnim = ObjectAnimator.ofFloat(this, "thumbPosition", position);
         mSlidingAnim.setInterpolator(new QuinticBezierInterpolator());
+        Log.d(TAG, "-->startSlidingAnim, duration:" + duration);
         mSlidingAnim.setDuration(duration);
         mSlidingAnim.addListener(this);
         mSlidingAnim.addUpdateListener(this);
@@ -932,11 +911,14 @@ public class Switch extends CompoundButton
 
     @Override
     public void setChecked(boolean checked) {
-        // super.setChecked(checked);
-        Log.d(TAG, "--> setChecked: " + checked);
+        Log.d(TAG, "--> setChecked(), checked: " + checked + " mInvalidate:" + mInvalidate);
         if (mInvalidate) {
             animateToFinalState(mChecked, checked);
         }
+        mChecked = checked;
+    }
+
+    public void setCheckedOnly(boolean checked) {
         mChecked = checked;
     }
 
@@ -944,7 +926,7 @@ public class Switch extends CompoundButton
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
 
-        Log.d(TAG, "left: " + left + " top: " + top + " right: " + right + " bottom: " + bottom);
+        // Log.d(TAG, "left: " + left + " top: " + top + " right: " + right + " bottom: " + bottom);
 
         mThumbPosition = isChecked() ? getThumbScrollRange() : 0;
 
@@ -959,7 +941,7 @@ public class Switch extends CompoundButton
             switchBottom = switchTop + mSwitchHeight;
             switchLeft = (getPaddingLeft() + getWidth() - getPaddingRight()) / 2 - mSwitchWidth/ 2;
             switchRight = switchLeft + mSwitchWidth;
-            Log.d(TAG, "swLeft: " + switchLeft + " swRight: " + switchRight + " mSwitchWidth:" + mSwitchWidth);
+            // Log.d(TAG, "swLeft: " + switchLeft + " swRight: " + switchRight + " mSwitchWidth:" + mSwitchWidth);
         } else {
             switch (getGravity() & Gravity.VERTICAL_GRAVITY_MASK) {
                 default:
@@ -1118,7 +1100,6 @@ public class Switch extends CompoundButton
         final int switchInnerBottom = switchBottom - mTempRect.bottom;
         // canvas.clipRect(switchInnerLeft, switchTop, switchInnerRight, switchBottom + mThumbDrawableShadowOffset);
         mThumbDrawable.getPadding(mTempRect);
-        // Log.d(TAG, "mThumbDrawable.getPadding: " + mTempRect);
         final int thumbPos = (int) (mThumbPosition + 0.5f);
         final int thumbLeft = switchInnerLeft - mTempRect.left + thumbPos;
         final int thumbTop = switchTop + mThumbDrawableShadowOffset;
@@ -1149,6 +1130,8 @@ public class Switch extends CompoundButton
         // mThumbDrawable.setLevel(alpha * 5000/255);
         mThumbDrawable.setPosition(10000 * thumbPos / thumbDistance);
         mThumbDrawable.draw(canvas);
+
+        // Log.d(TAG, "draw-thumb, position: " + thumbPos);
 
         // canvas.drawBitmapMesh(mThumbBitmap, WIDTH, HEIGHT, mVerts, 0, null, 0, paint);
 
