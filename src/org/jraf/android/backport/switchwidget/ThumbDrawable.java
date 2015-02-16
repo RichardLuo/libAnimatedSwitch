@@ -18,8 +18,6 @@ import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.RotateDrawable;
-import android.util.Log;
 import android.view.Gravity;
 
 public class ThumbDrawable extends Drawable {
@@ -143,6 +141,11 @@ public class ThumbDrawable extends Drawable {
     @Override
     public int getIntrinsicHeight() {
         return mThumbDrawable.getIntrinsicHeight();
+    }
+
+    int getWhiteSpaceWidth() {
+        final int w = mThumbDrawable.getIntrinsicWidth();
+        return (w * (mMaxSquashRatio - getLevel()) / 10000);
     }
 
     @Override

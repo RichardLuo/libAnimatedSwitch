@@ -78,6 +78,7 @@
         <attr name="asb_trackColor" format="color" />
         <attr name="asb_thumbCircle" format="reference" />
         <attr name="asb_thumbMargin" format="dimension" />
+        <attr name="asb_drawText" format="boolean" />
     </declare-styleable>
     <declare-styleable name="SwitchBackportTheme">
         <attr name="asb_switchStyle" format="reference" />

@@ -53,11 +53,9 @@ import android.view.animation.Interpolator;
 import android.view.animation.LinearInterpolator;
 import android.widget.CompoundButton;
 
-import com.actionbarsherlock.internal.nineoldandroids.animation.AnimatorSet;
 import com.actionbarsherlock.internal.nineoldandroids.animation.ObjectAnimator;
 import com.actionbarsherlock.internal.nineoldandroids.animation.ValueAnimator;
 import com.actionbarsherlock.internal.nineoldandroids.animation.Animator;
-import com.actionbarsherlock.internal.view.View_HasStateListenerSupport;
 
 /**
  * A Switch is a two-state toggle switch widget that can select between two
@@ -80,6 +78,7 @@ public class Switch extends CompoundButton
     private final int mThumbDrawableMargin;
     private int mThumbDistance = 0;
     private boolean mHitThumb = false;
+    private boolean mDrawText;
 
     static class QuinticBezierInterpolator implements Interpolator {
         public float getInterpolation(float t) {
@@ -168,6 +167,10 @@ public class Switch extends CompoundButton
         // setBackground(mBottomLayer);
     }
 
+    public void setDrawText(boolean drawText) {
+        mDrawText = drawText;
+    }
+
     @Override
     public void postInvalidate() {
         if (mInvalidate) {
@@ -232,6 +235,7 @@ public class Switch extends CompoundButton
         mThumbDrawableShadowOffset = a.getDimensionPixelSize(R.styleable.Switch_asb_thumbShadowOffset, 0);
         mOnTrackDrawable = a.getDrawable(R.styleable.Switch_asb_onTrack);
         mOffTrackDrawable = a.getDrawable(R.styleable.Switch_asb_offTrack);
+        mDrawText = a.getBoolean(R.styleable.Switch_asb_drawText, false);
         mTextOn = a.getText(R.styleable.Switch_asb_textOn);
         mTextOff = a.getText(R.styleable.Switch_asb_textOff);
         mThumbTextPadding = a.getDimensionPixelSize(R.styleable.Switch_asb_thumbTextPadding, 0);
@@ -273,6 +277,7 @@ public class Switch extends CompoundButton
         }
 
         ts = appearance.getDimensionPixelSize(R.styleable.Android_android_textSize, 0);
+        Log.d(TAG, "TS: " + ts);
         if (ts != 0) {
             if (ts != mTextPaint.getTextSize()) {
                 mTextPaint.setTextSize(ts);
@@ -769,11 +774,11 @@ public class Switch extends CompoundButton
                 break;
             case TS_RESTORING:
                 Log.d(TAG, "from TS_RESTORING to working!");
-                if (mRestoreAnim.isRunning()) {
+                if (mRestoreAnim != null && mRestoreAnim.isRunning()) {
                     mRestoreAnim.removeListener(this);
                     mRestoreAnim.end();
                 }
-                if (mSlidingAnim.isRunning()) {
+                if (mSlidingAnim != null && mSlidingAnim.isRunning()) {
                     mSlidingAnim.removeListener(this);
                     mSlidingAnim.end();
                 }
@@ -1073,6 +1078,30 @@ public class Switch extends CompoundButton
         mThumbDistance = (switchInnerRight - switchInnerLeft - thumbWidth);
     }
 
+    private void drawOnOffText(Canvas canvas, final int thumbLeft, final int thumbRight,
+                               final int switchInnerTop, final int switchInnerBottom) {
+        if (mDrawText == false) {
+            return;
+        }
+        if (mTextColors != null) {
+            mTextPaint.setColor(mTextColors.getColorForState(getDrawableState(), mTextColors.getDefaultColor()));
+        }
+        mTextPaint.drawableState = getDrawableState();
+
+        final Layout switchText = getTargetCheckedState() ? mOnLayout : mOffLayout;
+
+        canvas.save();
+        // canvas.clipRect(switchInnerLeft, switchTop, switchInnerRight, switchTop + mSwitchHeightWithShadow);
+        final int offset = mThumbDrawable.getWhiteSpaceWidth();
+        final int text_x = getTargetCheckedState() ? thumbLeft - switchText.getWidth() + offset : thumbRight - offset;
+        final int text_y = (switchInnerTop + switchInnerBottom) / 2 - switchText.getHeight() / 2;
+        canvas.translate(text_x, text_y);
+        // canvas.drawRect(0, 0, switchText.getWidth(), switchText.getHeight(), paint);
+        switchText.draw(canvas);
+        canvas.restore();
+
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -1126,33 +1155,20 @@ public class Switch extends CompoundButton
         // paint.setFilterBitmap(true);
         // paint.setDither(true);
 
+        drawOnOffText(canvas, thumbLeft, thumbRight, switchInnerTop, switchInnerBottom);
+
         canvas.translate(thumbLeft, thumbTop);
-        // mThumbDrawable.setLevel(alpha * 5000/255);
         mThumbDrawable.setPosition(10000 * thumbPos / thumbDistance);
         mThumbDrawable.draw(canvas);
+        canvas.restore();
 
         // Log.d(TAG, "draw-thumb, position: " + thumbPos);
-
         // canvas.drawBitmapMesh(mThumbBitmap, WIDTH, HEIGHT, mVerts, 0, null, 0, paint);
-
         // Paint paint = new Paint();
         // paint.setStyle(Paint.Style.FILL);
         // paint.setColor(R.color.dim_foreground_holo_dark);
         // canvas.drawRect(thumbLeft, switchTop, thumbRight, switchBottom, paint);
-
         // mTextColors should not be null, but just in case
-        if (mTextColors != null) {
-            mTextPaint.setColor(mTextColors.getColorForState(getDrawableState(), mTextColors.getDefaultColor()));
-        }
-        mTextPaint.drawableState = getDrawableState();
-
-        final Layout switchText = getTargetCheckedState() ? mOnLayout : mOffLayout;
-
-        canvas.translate((thumbLeft + thumbRight) / 2 - switchText.getWidth() / 2,
-                         (switchInnerTop + switchInnerBottom) / 2 - switchText.getHeight() / 2);
-        switchText.draw(canvas);
-
-        canvas.restore();
     }
 
     @Override
