@@ -277,7 +277,6 @@ public class Switch extends CompoundButton
         }
 
         ts = appearance.getDimensionPixelSize(R.styleable.Android_android_textSize, 0);
-        Log.d(TAG, "TS: " + ts);
         if (ts != 0) {
             if (ts != mTextPaint.getTextSize()) {
                 mTextPaint.setTextSize(ts);
@@ -925,6 +924,7 @@ public class Switch extends CompoundButton
 
     public void setCheckedOnly(boolean checked) {
         mChecked = checked;
+        invalidate();
     }
 
     @Override
