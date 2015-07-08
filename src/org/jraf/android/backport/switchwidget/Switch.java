@@ -723,6 +723,10 @@ public class Switch extends CompoundButton
         final boolean cancel = (old_check == new_check); 
         Log.d(TAG, "--> animateToFinalState, new_check: " + new_check
               + " thumb-state: " + mThumbState + " cancel: " + cancel);
+        if(cancel) {
+            Log.d(TAG, "no need to do anything");
+            return;
+        }
         mChecked = new_check;
         switch (mThumbState) {
             case TS_SQUASHING:
