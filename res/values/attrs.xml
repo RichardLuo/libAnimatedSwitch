@@ -62,6 +62,10 @@
         <!-- Drawable to use as the "track" that the switch thumb slides within. -->
         <attr name="asb_onTrack" format="reference" />
         <attr name="asb_offTrack" format="reference" />
+
+        <attr name="asb_disabledLeft" format="reference" />
+        <attr name="asb_disabledRight" format="reference" />
+
         <!-- Text to use when the switch is in the checked/"on" state. -->
         <attr name="asb_textOn" format="reference" />
         <!-- Text to use when the switch is in the unchecked/"off" state. -->

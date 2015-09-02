@@ -24,6 +24,9 @@
  */
 package org.jraf.android.backport.switchwidget;
 
+import android.animation.Animator;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -52,10 +55,6 @@ import android.view.ViewConfiguration;
 import android.view.animation.Interpolator;
 import android.view.animation.LinearInterpolator;
 import android.widget.CompoundButton;
-
-import com.actionbarsherlock.internal.nineoldandroids.animation.ObjectAnimator;
-import com.actionbarsherlock.internal.nineoldandroids.animation.ValueAnimator;
-import com.actionbarsherlock.internal.nineoldandroids.animation.Animator;
 
 /**
  * A Switch is a two-state toggle switch widget that can select between two
@@ -116,6 +115,8 @@ public class Switch extends CompoundButton
     private final int mThumbDrawableShadowOffset;
     private final Drawable mOnTrackDrawable;
     private final Drawable mOffTrackDrawable;
+    private final Drawable mDisabledLeft;
+    private final Drawable mDisabledRight;
     private final int mThumbTextPadding;
     private final int mSwitchMinWidth;
     private final int mSwitchPadding;
@@ -235,6 +236,8 @@ public class Switch extends CompoundButton
         mThumbDrawableShadowOffset = a.getDimensionPixelSize(R.styleable.Switch_asb_thumbShadowOffset, 0);
         mOnTrackDrawable = a.getDrawable(R.styleable.Switch_asb_onTrack);
         mOffTrackDrawable = a.getDrawable(R.styleable.Switch_asb_offTrack);
+        mDisabledLeft = a.getDrawable(R.styleable.Switch_asb_disabledLeft);
+        mDisabledRight = a.getDrawable(R.styleable.Switch_asb_disabledRight);
         mDrawText = a.getBoolean(R.styleable.Switch_asb_drawText, false);
         mTextOn = a.getText(R.styleable.Switch_asb_textOn);
         mTextOff = a.getText(R.styleable.Switch_asb_textOff);
@@ -758,6 +761,10 @@ public class Switch extends CompoundButton
                     mThumbState = ThumbState.TS_STOPPED;
                 }
                 break;
+            case TS_WORKING_TO_FINAL: {
+                Log.w(TAG, "frequent clicking??");
+                break;
+            }
             default:
                 throw new IllegalArgumentException("Impossible: " + mThumbState);
         }
@@ -790,6 +797,12 @@ public class Switch extends CompoundButton
                 startSquashAnim(SQUASHING_ANIM_DURATION);
                 mThumbState = ThumbState.TS_SQUASHING_TO_WORKING;                
                 Log.d(TAG, "TS_STOPPED, should be a quick click, do sliding");
+                break;
+            }
+            case TS_SQUASHING_TO_FINAL: {
+                break;
+            }
+            case TS_SQUASHING_TO_WORKING: {
                 break;
             }
             default:
@@ -1038,6 +1051,16 @@ public class Switch extends CompoundButton
         // initMatrix(mThumbWidth, mThumbDrawable.getIntrinsicHeight());
     }
 
+    private void drawDisabled(Canvas canvas) {
+        final int switchLeft = mSwitchLeft;
+        final int switchTop = mSwitchTop;
+        final int switchRight = mSwitchRight;
+        final int switchBottom = mSwitchBottom;
+        Drawable drawable = mChecked ? mDisabledRight : mDisabledLeft;
+        drawable.setBounds(switchLeft, switchTop, switchRight, switchBottom);
+        drawable.draw(canvas);
+    }
+
     private void drawTracks(int alpha, Canvas canvas) {
         final int switchLeft = mSwitchLeft;
         final int switchTop = mSwitchTop;
@@ -1109,6 +1132,11 @@ public class Switch extends CompoundButton
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+
+        if (!isEnabled()) {
+            drawDisabled(canvas);
+            return;
+        }
 
         // Draw the switch
         final int switchLeft = mSwitchLeft;
